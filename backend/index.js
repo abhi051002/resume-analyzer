@@ -24,8 +24,8 @@ async function extractTextFromPDF(buffer) {
     return text;
 }
 
-async function extractTextFromImage(filePath) {
-    const { data: { text } } = await Tesseract.recognize(filePath, "eng", {
+async function extractTextFromImage(buffer) {
+    const { data: { text } } = await Tesseract.recognize(buffer, "eng", {
         logger: () => {},
     });
     return text;
@@ -74,7 +74,7 @@ const corsOptions = {
     allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// ── Multer ────────────────────────────────────────────────────────────────────
+// ── Multer — memory storage, no disk writes ───────────────────────────────────
 const ALLOWED_MIME_TYPES = new Set([
     "application/pdf",
     "image/jpeg",
@@ -83,7 +83,8 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const upload = multer({
-    dest: "uploads/",
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
     fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
             cb(null, true);
@@ -129,17 +130,12 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
         const targetRole = (req.body.targetRole || "").toString().trim();
 
         if (req.file) {
-            const { mimetype, path: filePath } = req.file;
+            const { mimetype, buffer } = req.file;  // buffer from memoryStorage
 
-            try {
-                if (mimetype === "application/pdf") {
-                    const buffer = fs.readFileSync(filePath);
-                    resumeText = await extractTextFromPDF(buffer);
-                } else if (mimetype.startsWith("image/")) {
-                    resumeText = await extractTextFromImage(filePath);
-                }
-            } finally {
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            if (mimetype === "application/pdf") {
+                resumeText = await extractTextFromPDF(buffer);
+            } else if (mimetype.startsWith("image/")) {
+                resumeText = await extractTextFromImage(buffer);
             }
 
             if (!resumeText || resumeText.trim().length < 50) {
