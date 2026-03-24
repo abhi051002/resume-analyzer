@@ -35,7 +35,7 @@ async function extractTextFromPDF(buffer) {
 // ← New: OCR for images
 async function extractTextFromImage(filePath) {
     const { data: { text } } = await Tesseract.recognize(filePath, "eng", {
-        logger: () => {}, // silence progress logs
+        logger: () => { }, // silence progress logs
     });
     return text;
 }
@@ -88,8 +88,36 @@ const upload = multer({
 
 dotenv.config();
 
+const rawOrigins = process.env.ALLOWED_ORIGINS ?? "";
+const allowedOrigins = rawOrigins
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        console.log("Request origin:", JSON.stringify(origin));
+        console.log("Allowed list:", JSON.stringify(allowedOrigins));
+        // Allow requests with no origin (e.g. curl, Postman, server-to-server)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.length === 0) {
+            // No env var set — allow all (development fallback)
+            return callback(null, true);
+        }
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        callback(new Error(`CORS: origin '${origin}' is not allowed.`));
+    },
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+};
+
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -115,6 +143,15 @@ function multerErrorHandler(err, req, res, next) {
     }
     next(err);
 }
+
+// ── Health check / landing route ──────────────────────────────────────────────
+app.get("/", (_req, res) => {
+    res.json({
+        status: "ok",
+        service: "Resume Checker API",
+        version: "1.0.0"
+    });
+});
 
 app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => {
     try {
@@ -207,5 +244,11 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
 app.use(multerErrorHandler);
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
+
+    if (allowedOrigins.length > 0) {
+        console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
+    } else {
+        console.log("CORS: all origins allowed (ALLOWED_ORIGINS not set)");
+    }
 });
