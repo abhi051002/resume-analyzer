@@ -145,6 +145,7 @@ export default function App() {
   const [taglineIndex, setTaglineIndex] = useState(0);
   const [confetti, setConfetti] = useState([]);
   const fileInputRef = useRef(null);
+  const scrollRef = useRef(null);
 
   useEffect(() => {
     let index = 0;
@@ -188,6 +189,15 @@ export default function App() {
     }, 900);
     return () => clearInterval(interval);
   }, [loading, loadingSteps.length]);
+
+  // Scroll results into view when they appear
+  useEffect(() => {
+    if (result && scrollRef.current) {
+      setTimeout(() => {
+        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+      }, 100);
+    }
+  }, [result]);
 
   function handleFileChange(file) {
     if (!file) return;
@@ -282,222 +292,232 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      {/* Particles */}
+      <div className="particles" aria-hidden="true">
+        <span /><span /><span /><span /><span />
+      </div>
+
+      {/* Fixed header */}
+      <header className="app-header">
         <h1>Resume Analyzer</h1>
         <p className="hero-tagline">
           {tagline}
-          <span className="type-cursor" key={taglineIndex}>
-            |
-          </span>
+          <span className="type-cursor" key={taglineIndex}>|</span>
         </p>
       </header>
-      <div className="particles" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
 
-      <div className="input-card">
-        <div className="tabs">
-          <button
-            className={`tab-btn ${mode === "text" ? "active" : ""}`}
-            onClick={() => switchMode("text")}
-          >
-            ✏️ Paste Text
-          </button>
-          <button
-            className={`tab-btn ${mode === "file" ? "active" : ""}`}
-            onClick={() => switchMode("file")}
-          >
-            📄 Upload File
-          </button>
-        </div>
+      {/* Scrollable content */}
+      <div className="app-scroll" ref={scrollRef}>
+        <div className="app-scroll-inner">
 
-        {mode === "text" && (
-          <>
-            <div className="label-row">
-              <label htmlFor="resume-input">Your Resume</label>
-              {resumeText && (
-                <button
-                  className="clear-text-btn"
-                  onClick={() => {
-                    setResumeText("");
-                    setError(null);
-                    setResult(null);
-                  }}
-                >
-                  × Clear
-                </button>
-              )}
+          {/* Input card */}
+          <div className="input-card">
+            <div className="tabs">
+              <button
+                className={`tab-btn ${mode === "text" ? "active" : ""}`}
+                onClick={() => switchMode("text")}
+              >
+                ✏️ Paste Text
+              </button>
+              <button
+                className={`tab-btn ${mode === "file" ? "active" : ""}`}
+                onClick={() => switchMode("file")}
+              >
+                📄 Upload File
+              </button>
             </div>
-            <textarea
-              id="resume-input"
-              placeholder="Paste your resume text here…"
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-            />
-          </>
-        )}
 
-        <div className="target-role-row">
-          <label htmlFor="target-role-input">Target Role / Job Description (optional)</label>
-          <textarea
-            id="target-role-input"
-            className="target-role-input"
-            placeholder="Paste job title, requirements, or a short JD to tailor feedback..."
-            value={targetRole}
-            onChange={(e) => setTargetRole(e.target.value)}
-          />
-        </div>
-
-        {mode === "file" && (
-          <>
-            <div
-              className={`drop-zone ${dragOver ? "drag-over" : ""} ${uploadedFile ? "has-file" : ""}`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => !uploadedFile && fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp"
-                style={{ display: "none" }}
-                onChange={(e) => handleFileChange(e.target.files[0])}
-              />
-
-              {uploadedFile ? (
-                <>
-                  <span className="drop-icon">{getFileIcon(uploadedFile)}</span>
-                  <span className="drop-filename">{uploadedFile.name}</span>
-                  <span className="drop-hint">{formatFileSize(uploadedFile.size)}</span>
-                  <div className="file-actions">
-                    {/* Preview button */}
+            {mode === "text" && (
+              <>
+                <div className="label-row">
+                  <label htmlFor="resume-input">Your Resume</label>
+                  {resumeText && (
                     <button
-                      className="file-action-btn preview-btn"
-                      title="Preview file"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowPreview(true);
-                      }}
-                    >
-                      👁️
-                    </button>
-                    {/* Clear button */}
-                    <button
-                      className="file-action-btn clear-file-btn"
-                      title="Remove file"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setUploadedFile(null);
+                      className="clear-text-btn"
+                      onClick={() => {
+                        setResumeText("");
                         setError(null);
                         setResult(null);
-                        setShowPreview(false);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
                       }}
                     >
-                      ×
+                      × Clear
                     </button>
+                  )}
+                </div>
+                <textarea
+                  id="resume-input"
+                  placeholder="Paste your resume text here…"
+                  value={resumeText}
+                  onChange={(e) => setResumeText(e.target.value)}
+                />
+              </>
+            )}
+
+            <div className="target-role-row">
+              <label htmlFor="target-role-input">Target Role / Job Description (optional)</label>
+              <textarea
+                id="target-role-input"
+                className="target-role-input"
+                placeholder="Paste job title, requirements, or a short JD to tailor feedback..."
+                value={targetRole}
+                onChange={(e) => setTargetRole(e.target.value)}
+              />
+            </div>
+
+            {mode === "file" && (
+              <div
+                className={`drop-zone ${dragOver ? "drag-over" : ""} ${uploadedFile ? "has-file" : ""}`}
+                style={{ marginTop: "12px" }}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => !uploadedFile && fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  style={{ display: "none" }}
+                  onChange={(e) => handleFileChange(e.target.files[0])}
+                />
+
+                {uploadedFile ? (
+                  <>
+                    <span className="drop-icon">{getFileIcon(uploadedFile)}</span>
+                    <span className="drop-filename">{uploadedFile.name}</span>
+                    <span className="drop-hint">{formatFileSize(uploadedFile.size)}</span>
+                    <div className="file-actions">
+                      <button
+                        className="file-action-btn preview-btn"
+                        title="Preview file"
+                        onClick={(e) => { e.stopPropagation(); setShowPreview(true); }}
+                      >
+                        👁️
+                      </button>
+                      <button
+                        className="file-action-btn clear-file-btn"
+                        title="Remove file"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUploadedFile(null);
+                          setError(null);
+                          setResult(null);
+                          setShowPreview(false);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <span className="drop-hint">Click × to remove</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="drop-icon">⬆️</span>
+                    <span className="drop-title">Drop your file here</span>
+                    <span className="drop-hint">PDF, JPG, PNG, WEBP · or click to browse</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              className="analyze-btn"
+              onClick={handleAnalyze}
+              disabled={!canSubmit}
+            >
+              {loading ? "Analyzing…" : "Analyze Resume"}
+            </button>
+          </div>
+
+          {/* Loading */}
+          {loading && (
+            <div className="loading" style={{ marginBottom: "14px" }}>
+              <div className="spinner" />
+              <div className="loading-text">
+                <strong>{loadingSteps[loadingStep]}</strong>
+                <span>Analyzing your resume, this may take a moment.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && <div className="error-banner">⚠️ {error}</div>}
+
+          {/* Results */}
+          {result && (
+            <div className="results">
+              <div className="score-card">
+                <ScoreRing score={result.relevanceScore ?? 0} label="Relevance" />
+                <ScoreRing score={result.atsScore ?? 0} label="ATS" />
+                <ScoreRing score={result.toneScore ?? 0} label="Tone" />
+                <ScoreRing score={result.readabilityScore ?? 0} label="Readability" />
+                <div className="score-info">
+                  <h2>Score Breakdown</h2>
+                  <p>{result.overallFeedback}</p>
+                </div>
+              </div>
+
+              {result.strengths?.length > 0 && (
+                <SectionCard title="Strengths" icon="✅" defaultOpen>
+                  <ul className="list-green">
+                    {result.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                </SectionCard>
+              )}
+
+              {result.weaknesses?.length > 0 && (
+                <SectionCard title="Weaknesses" icon="⚠️" defaultOpen={false}>
+                  <ul className="list-red">
+                    {result.weaknesses.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                </SectionCard>
+              )}
+
+              {result.suggestions?.length > 0 && (
+                <SectionCard title="Suggestions for Improvement" icon="💡" defaultOpen>
+                  <ul className="list-accent">
+                    {result.suggestions.map((s, i) => (
+                      <li key={i} className="copy-line">
+                        <span>{s}</span>
+                        <button
+                          className="copy-btn"
+                          onClick={() => navigator.clipboard?.writeText(s)}
+                        >
+                          Copy
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </SectionCard>
+              )}
+
+              {result.missingKeywords?.length > 0 && (
+                <SectionCard title="Missing Keywords" icon="🔍" defaultOpen={false}>
+                  <div className="tags">
+                    {result.missingKeywords.map((kw, i) => (
+                      <span key={i} className="tag">{kw}</span>
+                    ))}
                   </div>
-                  <span className="drop-hint">Click × to remove</span>
-                </>
-              ) : (
-                <>
-                  <span className="drop-icon">⬆️</span>
-                  <span className="drop-title">Drop your file here</span>
-                  <span className="drop-hint">PDF, JPG, PNG, WEBP · or click to browse</span>
-                </>
+                </SectionCard>
               )}
             </div>
-          </>
-        )}
+          )}
 
-        <button
-          className="analyze-btn"
-          onClick={handleAnalyze}
-          disabled={!canSubmit}
-        >
-          {loading ? "Analyzing…" : "Analyze Resume"}
-        </button>
+        </div>
       </div>
 
-      {loading && (
-        <div className="loading">
-          <div className="spinner" />
-          <div className="loading-text">
-            <strong>{loadingSteps[loadingStep]}</strong>
-            <span>Analyzing your resume, this may take a moment.</span>
-          </div>
-        </div>
-      )}
+      {/* Fixed footer */}
+      <footer className="app-footer">
+        <p>Built by Abhijit with ❤️</p>
+      </footer>
 
-      {error && <div className="error-banner">⚠️ {error}</div>}
-
-      {result && (
-        <div className="results">
-          <div className="score-card">
-            <ScoreRing score={result.relevanceScore ?? 0} label="Relevance" />
-            <ScoreRing score={result.atsScore ?? 0} label="ATS" />
-            <ScoreRing score={result.toneScore ?? 0} label="Tone" />
-            <ScoreRing score={result.readabilityScore ?? 0} label="Readability" />
-            <div className="score-info">
-              <h2>Score Breakdown</h2>
-              <p>{result.overallFeedback}</p>
-            </div>
-          </div>
-
-          {result.strengths?.length > 0 && (
-            <SectionCard title="Strengths" icon="✅" defaultOpen>
-              <ul className="list-green">
-                {result.strengths.map((s, i) => <li key={i}>{s}</li>)}
-              </ul>
-            </SectionCard>
-          )}
-
-          {result.weaknesses?.length > 0 && (
-            <SectionCard title="Weaknesses" icon="⚠️" defaultOpen={false}>
-              <ul className="list-red">
-                {result.weaknesses.map((w, i) => <li key={i}>{w}</li>)}
-              </ul>
-            </SectionCard>
-          )}
-
-          {result.suggestions?.length > 0 && (
-            <SectionCard title="Suggestions for Improvement" icon="💡" defaultOpen>
-              <ul className="list-accent">
-                {result.suggestions.map((s, i) => (
-                  <li key={i} className="copy-line">
-                    <span>{s}</span>
-                    <button
-                      className="copy-btn"
-                      onClick={() => navigator.clipboard?.writeText(s)}
-                    >
-                      Copy
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          )}
-
-          {result.missingKeywords?.length > 0 && (
-            <SectionCard title="Missing Keywords" icon="🔍" defaultOpen={false}>
-              <div className="tags">
-                {result.missingKeywords.map((kw, i) => (
-                  <span key={i} className="tag">{kw}</span>
-                ))}
-              </div>
-            </SectionCard>
-          )}
-        </div>
-      )}
-
+      {/* File preview modal */}
       {showPreview && uploadedFile && (
         <FilePreviewModal file={uploadedFile} onClose={() => setShowPreview(false)} />
       )}
+
+      {/* Confetti */}
       <div className="confetti-wrap" aria-hidden="true">
         {confetti.map((piece) => (
           <span
