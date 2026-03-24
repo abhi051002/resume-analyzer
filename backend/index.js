@@ -8,6 +8,9 @@ import fs from "fs";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import Tesseract from "tesseract.js";
 
+dotenv.config();
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function parseJsonFromModel(content) {
     if (typeof content !== "string") {
         throw new Error("Model response is not text.");
@@ -35,7 +38,7 @@ async function extractTextFromPDF(buffer) {
 // ← New: OCR for images
 async function extractTextFromImage(filePath) {
     const { data: { text } } = await Tesseract.recognize(filePath, "eng", {
-        logger: () => { }, // silence progress logs
+        logger: () => {},
     });
     return text;
 }
@@ -47,7 +50,7 @@ async function isResume(ollama, model, text) {
         messages: [
             {
                 role: "system",
-                content: "You are a document classifier. Respond with valid JSON only."
+                content: "You are a document classifier. Respond with valid JSON only.",
             },
             {
                 role: "user",
@@ -57,16 +60,33 @@ Text:
 ${snippet}
 
 Respond with ONLY this JSON:
-{"isResume": true or false, "reason": "brief one-sentence explanation"}`
-            }
+{"isResume": true or false, "reason": "brief one-sentence explanation"}`,
+            },
         ],
         stream: false,
     });
 
-    const parsed = JSON.parse(response.message.content);
-    return parsed;
+    return JSON.parse(response.message.content);
 }
 
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.length === 0) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS: origin '${origin}' is not allowed.`));
+    },
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+// ── Multer ────────────────────────────────────────────────────────────────────
 const ALLOWED_MIME_TYPES = new Set([
     "application/pdf",
     "image/jpeg",
@@ -74,10 +94,9 @@ const ALLOWED_MIME_TYPES = new Set([
     "image/webp",
 ]);
 
-// ← Accept pdf + images
 const upload = multer({
     dest: "uploads/",
-    fileFilter: (req, file, cb) => {
+    fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
             cb(null, true);
         } else {
@@ -86,36 +105,7 @@ const upload = multer({
     },
 });
 
-dotenv.config();
-
-const rawOrigins = process.env.ALLOWED_ORIGINS ?? "";
-const allowedOrigins = rawOrigins
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-const corsOptions = {
-    origin: (origin, callback) => {
-        console.log("Request origin:", JSON.stringify(origin));
-        console.log("Allowed list:", JSON.stringify(allowedOrigins));
-        // Allow requests with no origin (e.g. curl, Postman, server-to-server)
-        if (!origin) return callback(null, true);
-
-        if (allowedOrigins.length === 0) {
-            // No env var set — allow all (development fallback)
-            return callback(null, true);
-        }
-
-        if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-        }
-
-        callback(new Error(`CORS: origin '${origin}' is not allowed.`));
-    },
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-};
-
+// ── App ───────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors(corsOptions));
 app.use(express.json());
@@ -124,7 +114,7 @@ const PORT = process.env.PORT || 3000;
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
 
 const ollama = new Ollama({
-    host: "https://ollama.com",
+    host: process.env.OLLAMA_HOST,
     headers: {
         Authorization: "Bearer " + process.env.OLLAMA_API_KEY,
     },
@@ -136,15 +126,7 @@ const analyzeLimiter = rateLimit({
     message: { error: "Too many resume analyses. Try again later." },
 });
 
-// Handle multer fileFilter errors
-function multerErrorHandler(err, req, res, next) {
-    if (err?.message) {
-        return res.status(400).json({ error: err.message });
-    }
-    next(err);
-}
-
-// ── Health check / landing route ──────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
 app.get("/", (_req, res) => {
     res.json({
         status: "ok",
@@ -166,17 +148,15 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
                     const buffer = fs.readFileSync(filePath);
                     resumeText = await extractTextFromPDF(buffer);
                 } else if (mimetype.startsWith("image/")) {
-                    // ← OCR path for images
                     resumeText = await extractTextFromImage(filePath);
                 }
             } finally {
-                // Always cleanup the temp file
                 if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             }
 
             if (!resumeText || resumeText.trim().length < 50) {
                 return res.status(400).json({
-                    error: "Could not extract enough text. Make sure the file is clear and readable."
+                    error: "Could not extract enough text. Make sure the file is clear and readable.",
                 });
             }
 
@@ -226,7 +206,10 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
         const response = await ollama.chat({
             model: OLLAMA_MODEL,
             messages: [
-                { role: "system", content: "You are a resume analysis assistant. Always respond with valid JSON only." },
+                {
+                    role: "system",
+                    content: "You are a resume analysis assistant. Always respond with valid JSON only.",
+                },
                 { role: "user", content: prompt },
             ],
             stream: false,
@@ -240,12 +223,19 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
     }
 });
 
-// ← Must be after routes
-app.use(multerErrorHandler);
+// ── Error handler (must be after all routes) ──────────────────────────────────
+app.use((err, _req, res, _next) => {
+    if (err?.message?.startsWith("CORS:")) {
+        return res.status(403).json({ error: err.message });
+    }
+    if (err?.message) {
+        return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: "Internal server error." });
+});
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-
     if (allowedOrigins.length > 0) {
         console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
     } else {
