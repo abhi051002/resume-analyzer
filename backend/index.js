@@ -5,7 +5,7 @@ import { Ollama } from "ollama";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import fs from "fs";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import { extractText } from "unpdf";
 import Tesseract from "tesseract.js";
 
 dotenv.config();
@@ -20,22 +20,10 @@ function parseJsonFromModel(content) {
 }
 
 async function extractTextFromPDF(buffer) {
-    const uint8Array = new Uint8Array(buffer);
-    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-    const pdf = await loadingTask.promise;
-
-    let fullText = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const pageText = content.items.map(item => item.str).join(" ");
-        fullText += pageText + "\n";
-    }
-
-    return fullText;
+    const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
+    return text;
 }
 
-// ← New: OCR for images
 async function extractTextFromImage(filePath) {
     const { data: { text } } = await Tesseract.recognize(filePath, "eng", {
         logger: () => {},
@@ -223,7 +211,7 @@ app.post("/analyze", analyzeLimiter, upload.single("file"), async (req, res) => 
     }
 });
 
-// ── Error handler (must be after all routes) ──────────────────────────────────
+// ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
     if (err?.message?.startsWith("CORS:")) {
         return res.status(403).json({ error: err.message });
